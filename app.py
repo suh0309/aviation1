@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,25 +6,24 @@ from sklearn.cluster import KMeans
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, accuracy_score
 from mlxtend.frequent_patterns import apriori, association_rules
+import plotly.express as px
 
-# Load data
 @st.cache
 def load_data():
     return pd.read_csv('passenger_journey.csv')
 
 data = load_data()
-
-st.sidebar.title("Analytics Dashboard")
+st.sidebar.title("Interactive Analytics Dashboard")
 module = st.sidebar.radio("Select Module", ["Pre-Flight", "In-Flight", "Post-Flight"])
 
 if module == "Pre-Flight":
     st.header("Pre-Flight Analysis & Models")
+    numeric_cols = ['wait_time', 'fast_track', 'map_open', 'coffee_purchase']
+    x_var = st.selectbox("X variable", numeric_cols, index=2)
+    y_var = st.selectbox("Y variable", numeric_cols, index=0)
+    fig = px.scatter(data, x=x_var, y=y_var, title=f"{y_var} vs {x_var}")
+    st.plotly_chart(fig, use_container_width=True)
 
-    # Visualization
-    st.subheader("Wait Time Distribution")
-    st.bar_chart(data['wait_time'].value_counts().sort_index())
-
-    # Linear Regression: Predict wait_time
     st.subheader("Linear Regression: Predicting Wait Time")
     X = data[['map_open', 'fast_track']]
     y = data['wait_time']
@@ -35,21 +33,21 @@ if module == "Pre-Flight":
     st.write(f"R² score: {r2_score(y_test, preds):.2f}")
     st.write("Coefficients:", dict(zip(X.columns, lr.coef_.round(2))))
 
-    # Association Rule Mining
-    st.subheader("Association Rules on Behaviors")
+    st.subheader("Association Rules on Pre-Flight Behaviors")
     pf = data[['map_open', 'coffee_purchase', 'fast_track']].astype(bool)
     freq = apriori(pf, min_support=0.1, use_colnames=True)
     rules = association_rules(freq, metric="lift", min_threshold=1.2)
-    st.write(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']].head())
+    st.dataframe(rules[['antecedents', 'consequents', 'support', 'confidence', 'lift']])
 
 elif module == "In-Flight":
     st.header("In-Flight Analysis & Models")
+    numeric_cols = ['flight_duration', 'ancillary_spend', 'mood_score', 'upgrade_purchase']
+    x_var = st.selectbox("X variable", numeric_cols, index=0)
+    y_var = st.selectbox("Y variable", numeric_cols, index=1)
+    pivot = data.groupby(x_var)[y_var].mean().reset_index()
+    fig = px.line(pivot, x=x_var, y=y_var, title=f"Mean {y_var} by {x_var}")
+    st.plotly_chart(fig, use_container_width=True)
 
-    # Visualization
-    st.subheader("Ancillary Spend vs Flight Duration")
-    st.line_chart(data.groupby('flight_duration')['ancillary_spend'].mean())
-
-    # Classification: Predict upgrade_purchase
     st.subheader("Classification: Predicting Upgrade Purchase")
     X = data[['mood_score']]
     y = data['upgrade_purchase']
@@ -57,29 +55,25 @@ elif module == "In-Flight":
     clf = LogisticRegression(max_iter=200).fit(X_train, y_train)
     preds = clf.predict(X_test)
     st.write(f"Accuracy: {accuracy_score(y_test, preds):.2f}")
-    st.write("Coefficients:", dict(zip(X.columns, clf.coef_[0].round(2))))
+    st.write("Coefficient:", clf.coef_[0][0].round(2))
 
-    # Clustering: IFE engagement clusters
     st.subheader("Clustering: IFE Engagement Segments")
     Xc = data[['mood_score', 'ancillary_spend']]
     kmeans = KMeans(n_clusters=3, random_state=42).fit(Xc)
     data['cluster'] = kmeans.labels_
-    st.write(data['cluster'].value_counts())
+    fig2 = px.bar(data['cluster'].value_counts().rename_axis('cluster').reset_index(name='count'),
+                  x='cluster', y='count', title="Cluster Counts")
+    st.plotly_chart(fig2, use_container_width=True)
 
 else:
     st.header("Post-Flight Analysis")
+    numeric_cols = ['baggage_wait', 'feedback_score', 'transfer_booked', 'loyalty_triggered']
+    x_var = st.selectbox("Select variable", numeric_cols, index=0)
+    fig3 = px.bar(data[x_var].value_counts().reset_index().rename(columns={'index': x_var, x_var:'count'}),
+                  x=x_var, y='count', title=f"Distribution of {x_var}")
+    st.plotly_chart(fig3, use_container_width=True)
 
-    # Visualization
-    st.subheader("Baggage Wait Time Distribution")
-    st.bar_chart(data['baggage_wait'].value_counts().sort_index())
-
-    st.subheader("Feedback Score Distribution")
-    st.bar_chart(data['feedback_score'].value_counts().sort_index())
-
-    st.subheader("Transfer Booking Rate")
-    st.bar_chart(data['transfer_booked'].value_counts(normalize=True))
-
-st.sidebar.markdown("Upload new data:")
+st.sidebar.markdown("### Upload New Data")
 uploaded_file = st.sidebar.file_uploader("", type=["csv"])
 if uploaded_file:
     new_data = pd.read_csv(uploaded_file)
